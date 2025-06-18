@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Multiplex HCR Probe Pool Designer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 20px; }
+        h1 { text-align: center; color: #4CAF50; }
+
+        .container { background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); max-width: 1000px; margin: auto; }
+        textarea, input, select { width: 100%; padding: 8px; margin: 8px 0; font-size: 16px; border-radius: 4px; border: 1px solid #ccc; }
+        button { background-color: #4CAF50; color: white; font-size: 18px; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+        button:hover { background-color: #45a049; }
+        .result-box { background: #f0f0f0; padding: 15px; border-radius: 8px; margin-top: 20px; }
+        .highlight { background-color: yellow; }
+        .sequence-box { font-family: monospace; white-space: pre-wrap; word-break: break-word; background: #fff; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
+        .footer {
+            text-align: center;
+            font-size: 14px;
+            color: #777;
+            margin: 40px 0 20px 0;
+        }
+</style>
+</head>
+<body>
+    <h1>RGB-HCR Probe Pool Designer</h1>
+    <div class="container">
+        <label>Pool Name:</label>
+        <input type="text" id="pool-name" placeholder="Enter Pool Name">
+
+        <label>Gene 1 Sequence:</label>
+        <textarea id="gene1" rows="3"></textarea>
+        <label>Gene 2 Sequence:</label>
+        <textarea id="gene2" rows="3"></textarea>
+        <label>Gene 3 Sequence:</label>
+        <textarea id="gene3" rows="3"></textarea>
+        <label>Gene 4 Sequence:</label>
+        <textarea id="gene4" rows="3"></textarea>
+        <label>Gene 5 Sequence:</label>
+        <textarea id="gene5" rows="3"></textarea>
+        <label>Gene 6 Sequence:</label>
+        <textarea id="gene6" rows="3"></textarea>
+
+        <label>GC Content Threshold (%):</label>
+        <select id="gc-content">
+            <option value="30">30%</option>
+            <option value="40">40%</option>
+            <option value="50">50%</option>
+            <option value="60">60%</option>
+            <option value="70">70%</option>
+        </select>
+
+        <label>Gap between Probe Sets (bp):</label>
+        <input type="number" id="probe-gap" value="30">
+
+        <button onclick="designPool()">Design Probes</button>
+        <button onclick="downloadExcel()">Download Excel</button>
+
+<h5>Cite: Banerjee, T. D., Raine, J., Mathuru, A. S., Chen, K. H., and Monteiro, A. (2024). Spatial mRNA profiling using Rapid Amplified Multiplexed-FISH (RAM-FISH). bioRxiv. <a href="https://www.biorxiv.org/content/10.1101/2024.12.06.627193v1.full">Link</a> 
+<br><br>
+References: 1) Choi, H. M. T., Schwarzkopf, M., Fornace, M. E., Acharya, A., Artavanis, G., Stegmaier, J., Cunha, A. and Pierce, N. A. (2018). Third-generation in situ hybridization chain reaction : multiplexed , quantitative , sensitive , versatile , robust. Development.
+<a href="https://journals.biologists.com/dev/article/145/12/dev165753/48466/Third-generation-in-situ-hybridization-chain">Link</a>
+<br>2) Wang, Y., Liu, X., Zeng, Y., Saka, S. K., Xie, W., Goldaracena, I., Kohman, R. E., Yin, P. and Church, G. M. (2024). Multiplexed in situ protein imaging using DNA-barcoded antibodies with extended hybridization chain reactions. Nucleic Acids Research 52, e71.
+<a href="https://academic.oup.com/nar/article/52/15/e71/7706473">Link</a></h5>
+
+
+        <div id="results" class="result-box"></div>
+    </div>
+<div class="footer">
+  Designed by <a href="https://scholar.google.com/citations?user=H2S5ROQAAAAJ&hl=en" target="_blank" rel="noopener noreferrer">Tirtha Das Banerjee</a>
+</div>
+
+    <script>
+        function reverseComplement(seq) {
+            const comp = {'A':'T','T':'A','C':'G','G':'C'};
+            return seq.split('').reverse().map(base => comp[base] || base).join('');
+        }
+
+        function calculateGCContent(seq) {
+            let gc = (seq.match(/[GC]/g) || []).length;
+            return (gc / seq.length) * 100;
+        }
+
+        const amplifiers = {
+            B1: ["GAGGAGGGCAGCAAACGGAA", "TAGAAGAGTCTTCCTTTACG"],
+            B2: ["CCTCGTAAATCCTCATCAAA", "AAATCATCCAGTAAACCGCC"],
+            B3: ["GTCCCTGCCTCTATATCTTT", "TTCCACTCAACTTTAACCCG"],
+        };
+
+        let exportData = [];
+
+        function designPool() {
+            exportData = [];
+            const poolName = document.getElementById("pool-name").value.trim();
+            const genes = [
+                document.getElementById("gene1").value.toUpperCase().replace(/[^ATCG]/g,""),
+                document.getElementById("gene2").value.toUpperCase().replace(/[^ATCG]/g,""),
+                document.getElementById("gene3").value.toUpperCase().replace(/[^ATCG]/g,""),
+                document.getElementById("gene4").value.toUpperCase().replace(/[^ATCG]/g,""),
+                document.getElementById("gene5").value.toUpperCase().replace(/[^ATCG]/g,""),
+                document.getElementById("gene6").value.toUpperCase().replace(/[^ATCG]/g,"")
+            ];
+            const gcThreshold = parseInt(document.getElementById("gc-content").value);
+            const gap = parseInt(document.getElementById("probe-gap").value);
+            let output = `<h3>Probe Pool: ${poolName}</h3>`;
+
+            for (let g=0; g<genes.length; g++) {
+                let seq = genes[g];
+                if (seq.length < 70) {
+                    output += `<p>Gene ${g+1}: Sequence too short (min 70 bp)</p>`;
+                    continue;
+                }
+
+                let idx = 0, set = 1;
+                let highlighted = seq.split('');
+
+                output += `<h4>Gene ${g+1}</h4>`;
+
+                while (idx + 52 <= seq.length) {
+                    let p1 = seq.slice(idx, idx + 25);
+                    let p2 = seq.slice(idx + 27, idx + 52); // 2bp gap between P1 and P2
+
+                    let rc1 = reverseComplement(p1);
+                    let rc2 = reverseComplement(p2);
+
+                    if (calculateGCContent(rc1) < gcThreshold || calculateGCContent(rc2) < gcThreshold) {
+                        idx++;
+                        continue;
+                    }
+
+                    // mark highlight
+                    for (let i=idx; i<idx+25; i++) highlighted[i] = `<span class="highlight">${seq[i]}</span>`;
+                    for (let i=idx+27; i<idx+52; i++) highlighted[i] = `<span class="highlight">${seq[i]}</span>`;
+
+                    let amplifier = "";
+                    if (g === 0) amplifier = "B1";
+                    else if (g === 1) amplifier = "B2";
+                    else if (g === 2) amplifier = "B3";
+                    else if (g === 3) amplifier = (set % 2 === 1) ? "B1" : "B2";
+                    else if (g === 4) amplifier = (set % 2 === 1) ? "B2" : "B3";
+                    else if (g === 5) amplifier = (set % 2 === 1) ? "B3" : "B1";
+
+                    let name1 = `${poolName}_Gene${g+1}_${amplifier}_P1_${set}`;
+                    let name2 = `${poolName}_Gene${g+1}_${amplifier}_P2_${set}`;
+                    let seq1 = amplifiers[amplifier][0] + rc1;
+                    let seq2 = rc2 + amplifiers[amplifier][1];
+
+                    output += `<div><b>Set ${set}:</b><br>Probe 1: ${name1}: ${seq1}<br>Probe 2: ${name2}: ${seq2}</div><br>`;
+                    
+                    exportData.push([`Gene${g+1}`, name1, seq1, name2, seq2]);
+
+                    idx += 50 + gap;
+                    set++;
+                }
+
+                output += `<div class="sequence-box">${highlighted.join('')}</div><br>`;
+            }
+
+            document.getElementById("results").innerHTML = output;
+        }
+
+        function downloadExcel() {
+            if (exportData.length === 0) {
+                alert("No probe data to export. Please run 'Design Probes' first.");
+                return;
+            }
+            let header = [["Gene", "Probe 1 Name", "Probe 1 Sequence", "Probe 2 Name", "Probe 2 Sequence"]];
+            let ws = XLSX.utils.aoa_to_sheet(header.concat(exportData));
+            let wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Probes");
+            XLSX.writeFile(wb, "rgbhcr_probe_pool.xlsx");
+        }
+    </script>
+</body>
+</html>
